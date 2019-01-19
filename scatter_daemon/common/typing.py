@@ -7,6 +7,7 @@ from typing import (  # noqa: F401
     List,
     Tuple,
     Iterable,
+    Collection,
     Set,
 )
 from pathlib import Path
@@ -16,6 +17,7 @@ from web3 import Web3
 PS = Union[Path, str]
 StrOrBytes = Union[str, bytes]
 DictOfAny = Dict[str, Any]
+SetOrList = Union[Set, List]
 
 
 def to_path(v: PS) -> Path:
