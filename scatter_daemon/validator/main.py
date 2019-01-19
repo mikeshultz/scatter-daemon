@@ -6,7 +6,7 @@ from configparser import ConfigParser
 from web3 import Web3
 from web3.eth import Contract
 from attrdict import AttrDict
-from ..storage import connect, store_events, get_available_pins
+from ..storage import connect, store_events, get_bids_to_validate
 from ..common.const import STD_PROCESS_DELAY, SETTLED_PROCESS_DELAY, DEFAULT_DB_FILE
 from ..common.config import VALIDATOR_EL, config_get
 from ..common.contracts import (
@@ -31,19 +31,18 @@ def get_job():
 
 def process_events(contract: Contract, logs: List) -> List[AttrDict]:
     """ Process all events """
-    log.debug('process_events')
     events = []
     event_lookup = events_from_abi(contract.abi)
     for event_log in logs:
         topic_sig = event_log['topics'][0].hex()
-        log.debug("event_log. sig: {}".format(topic_sig))
+        log.debug("topic_sig: {}".format(topic_sig))
         log.debug("event_lookup: {}".format(event_lookup))
         if topic_sig in event_lookup:
-            log.debug("FFOOOOOOOOOUUUUNNNND EEEEEEEEVEEEENNNNTTTT")
             new_event = event_from_log(event_lookup[topic_sig], event_log)
             new_event['name'] = event_lookup[topic_sig].get('name')
             new_event['txhash'] = logs[0]['transactionHash'].hex()
             new_event['block_number'] = logs[0]['blockNumber']
+            log.info("Received event {}.".format(new_event['name']))
             events.append(new_event)
     return events
 
@@ -64,6 +63,9 @@ def fetch_events(conn: sqlite3.Connection, web3: Web3, scatter: Contract):
 
 def validate_bid(scatter: Contract, bid_id: int):
     """ Perform validation """
+    print('#######################################################################################')
+    print('#######################################################################################')
+    print('#######################################################################################')
     pass
 
 
@@ -89,7 +91,7 @@ def validate_run(conf: ConfigParser) -> None:
         fetch_events(db_conn, web3, scatter)
 
         log.info("Selecting pin to validate...")
-        pins = get_available_pins(db_conn, my_account)
+        pins = get_bids_to_validate(db_conn, my_account)
         log.debug("Found {} available pins".format(len(pins)))
         bid_id = select_random_pin_for_validation(scatter, pins, {
             'max_file_size': config_get(conf, 'max_file_size', section=VALIDATOR_EL),

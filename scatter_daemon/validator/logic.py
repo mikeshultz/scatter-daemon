@@ -21,19 +21,18 @@ def select_random_pin_for_validation(scatter: Contract, pins: List[DictOfAny], o
     min_duration = get_from_first('min_duration', options, VALIDATION_DEFAULTS)
     max_duration = get_from_first('max_duration', options, VALIDATION_DEFAULTS)
 
-    pin_idx_range = list(range(0, total - 1))
+    pin_idx_range = list(range(0, total))
     shuffle(pin_idx_range)
 
     for idx in pin_idx_range:
         log.debug('Checking pin #{}'.format(idx))
         pin = pins[idx]
-        bid_id = pin['args'].get('bid_id')
+        bid_id = pin.get('bid_id')
 
-        if not bid_id:
+        if bid_id is None:
             raise ValueError("Provided pin missing bid_id")
 
         (
-            _,
             bidder,
             file_hash,
             file_size,
@@ -47,7 +46,7 @@ def select_random_pin_for_validation(scatter: Contract, pins: List[DictOfAny], o
         # Only return something we want
         if (file_size < min_file_size
                 or file_size > max_file_size
-                or validation_pool // validation_count < min_reward
+                or (validation_count != 0 and (validation_pool // validation_count) < min_reward)
                 or duration < min_duration
                 or duration > max_duration):
             log.debug('Pin #{} does not meet criteria.'.format(idx))
