@@ -5,16 +5,15 @@ from hexbytes import HexBytes
 from web3 import Web3
 from web3.eth import Contract
 from web3.datastructures import AttributeDict
-from eth_abi import decode_abi
-from eth_utils import remove_0x_prefix, add_0x_prefix
+from eth_abi import decode_abi, decode_single
+from eth_utils import add_0x_prefix
 from attrdict import AttrDict
 from .typing import (
     to_account,
-    Optional,
+    Collection,
     StrOrBytes,
     Dict,
     Tuple,
-    Set,
     List,
     Any,
 )
@@ -72,53 +71,61 @@ def gen_signature(abi_entry: dict) -> str:
             or (abi_entry.get('type') not in ('function', 'event')):
         raise ValueError("Invalid ABI type to generate signature")
     input_types = [x['type'] for x in abi_entry['inputs']]
-    return Web3.sha3(text='{}({})'.format(abi_entry['name'], ','.join(input_types))).hex()
+    sig = '{}({})'.format(abi_entry['name'], ','.join(input_types))
+    return Web3.sha3(text=sig).hex()
 
 
 def events_from_abi(abi: dict) -> dict:
     """ Get all events from an ABI and store with topics signature as key """
-    log.debug("events_from_abi: len(abi) {}".format(len(abi)))
     if len(abi) < 1:
         return {}
     events = {}
     for ent in abi:
-        log.debug("processing... {}".format(ent))
         if ent.get('type') == 'event':
             events[gen_signature(ent)] = ent
     return events
 
 
-def get_types_from_inputs(abi_inputs: List[Dict[str, Any]]) -> Tuple[Set, Set]:
+def get_types_from_inputs(abi_inputs: List[Dict[str, Any]]) -> Tuple[List, List]:
     """ Take the types from an abi and return them as indexed or not """
-    indexed_types: Set = set()
-    data_types: Set = set()
+    indexed_types: List = []
+    data_types: List = []
 
-    log.debug("abi_inputs: {}".format(abi_inputs))
-    for i in range(0, len(abi_inputs) - 1):
+    for i in range(0, len(abi_inputs)):
         if abi_inputs[i]['indexed'] is True:
-            indexed_types.add(abi_inputs[i]['type'])
+            indexed_types.append(abi_inputs[i]['type'])
         elif abi_inputs[i]['indexed'] is False:
-            data_types.add(abi_inputs[i]['type'])
+            data_types.append(abi_inputs[i]['type'])
         else:
             log.error("Not sure if ABI type is indexed. This is probably an error.")
 
     return (indexed_types, data_types)
 
 
+def decode_values(types: Collection, values: Collection) -> List:
+    """ Decode individual values as the provided types """
+    assert len(types) == len(values), "Mismatched types and values"
+
+    types = list(types)
+    values = list(values)
+
+    decoded = []
+
+    for i in range(0, len(values)):
+        dsingle = decode_single(types[i], values[i])
+        decoded.append(dsingle)
+
+    return decoded
+
+
 def event_from_log(abi: Dict[str, Any], event_log: Dict[str, Any]) -> AttrDict:
-    log.debug("abi: {}".format(abi))
-    log.debug("event_log: {}".format(event_log))
     if not abi.get('inputs'):
         log.warning("ABI has no inputs")
         return {}
 
     indexed_types, data_types = get_types_from_inputs(abi['inputs'])
-    indexed_values = safe_slice(event_log['topics'], 1, 3)
-    log.debug("len(indexed_values): {}".format(len(indexed_values)))
-    log.debug("len(indexed_types): {}".format(len(indexed_types)))
-    log.debug("len(data_types): {}".format(len(data_types)))
-    indexed_decoded = decode_abi(indexed_types,
-                                 HexBytes(''.join(remove_0x_prefix(x.hex()) for x in indexed_values)))
+    indexed_values = safe_slice(event_log['topics'], 1, 4)
+    indexed_decoded = decode_values(indexed_types, indexed_values)
     if len(event_log['data']) > 0:
         data_decoded = decode_abi(data_types, HexBytes(event_log['data']))
     else:
@@ -130,13 +137,22 @@ def event_from_log(abi: Dict[str, Any], event_log: Dict[str, Any]) -> AttrDict:
     })
 
     for i in range(0, len(indexed_decoded)):
-        if abi['inputs'][i]['type'] == 'bytes32':
-            event['args'][abi['inputs'][i]['name']] = add_0x_prefix(indexed_decoded[i].hex())
+        if abi['inputs'][i]['type'] in ('bytes32', 'address'):
+            if isinstance(indexed_decoded[i], bytes):
+                val = add_0x_prefix(indexed_decoded[i].hex())
+            else:
+                val = indexed_decoded[i]
+            event['args'][abi['inputs'][i]['name']] = val
         else:
             event['args'][abi['inputs'][i]['name']] = indexed_decoded[i]
 
     if len(abi['inputs']) > 3:
+        indexed_count = len(indexed_types)
         for i in range(0, len(data_decoded)):
-            event['args'][abi['inputs'][i]['name']] = data_decoded[i]
-    log.debug("event_from_log() -> {}".format(event))
+            name = abi['inputs'][indexed_count + i]['name']
+            if isinstance(data_decoded[i], bytes):
+                val = data_decoded[i].hex()
+            else:
+                val = data_decoded[i]
+            event['args'][name] = val
     return event
