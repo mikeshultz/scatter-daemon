@@ -21,6 +21,7 @@ CONFIG = None
 LOADED_FILE = None
 ROOT_EL = 'scatter'
 VALIDATOR_EL = 'validator'
+HOSTER_EL = 'hoster'
 
 
 def initial_config_structure(parser, overrides={}) -> None:
@@ -29,10 +30,16 @@ def initial_config_structure(parser, overrides={}) -> None:
     parser.set(ROOT_EL, 'account', overrides.get('account', ''))
     parser.set(ROOT_EL, 'router_address', overrides.get('router', MAINNET_ROUTER_ADDRESS))
     parser.set(ROOT_EL, 'db_file', overrides.get('db_file', '~/.scatter/scatter.db'))
-    parser.set(ROOT_EL, 'db_file', overrides.get('db_file', '~/.scatter/scatter.db'))
 
     parser.add_section(VALIDATOR_EL)
-    parser.set(ROOT_EL, 'max_file_size', overrides.get(
+    parser.set(VALIDATOR_EL, 'max_file_size', overrides.get(
+        'max_file_size',
+        str(VALIDATION_DEFAULTS.get('max_file_size'))
+    ))
+
+    parser.add_section(HOSTER_EL)
+    parser.set(HOSTER_EL, 'max_storage', overrides.get('max_storage', '21474836480'))  # 20GB
+    parser.set(VALIDATOR_EL, 'max_file_size', overrides.get(
         'max_file_size',
         str(VALIDATION_DEFAULTS.get('max_file_size'))
     ))
@@ -89,6 +96,7 @@ def config_get(conf: ConfigParser, key: str, default: Optional[Any] = None,
                section: Optional[str] = None) -> Optional[str]:
     """ Return a value or None from a ConfigParser instance """
     try:
-        return conf.get(section or ROOT_EL, key)
+        val = conf.get(section or ROOT_EL, key)
+        return val
     except NoOptionError:
         return default
