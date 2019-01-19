@@ -7,7 +7,8 @@ from ..common.logging import getLogger
 log = getLogger(__name__)
 
 cached_connection: Optional[sqlite3.Connection] = None
-TABLES = ['event', 'pin', 'action', 'action_type']
+#TABLES = ['event', 'pin', 'action', 'action_type']
+TABLES = ['event', 'bid', 'action', 'action_type']
 
 
 def structure_exists(connect: sqlite3.Connection) -> bool:
@@ -33,11 +34,16 @@ def init_structure(connect: sqlite3.Connection):
                 "(tx_hash TEXT, block_number INT, name TEXT, "
                 "args TEXT);")
 
+    cur.execute("CREATE UNIQUE INDEX event_single ON event(tx_hash, name);")
+
     cur.execute("CREATE TABLE action_type "
                 "(name TEXT);")
 
-    cur.execute("CREATE TABLE pin "
-                "(hoster TEXT, file_hash TEXT, validated BOOLEAN);")
+    cur.execute("CREATE TABLE bid "
+                "(tx_hash TEXT UNIQUE, bid_id INT UNIQUE, bidder TEXT, bid_value INT, "
+                "validation_pool INT, file_hash TEXT, file_size INT, hoster TEXT, pinned BOOLEAN, "
+                "pinned_txhash TEXT, accepted INT, accepted_txhash TEXT, "
+                "validated BOOLEAN);")
 
     cur.execute("CREATE TABLE action "
                 "(action_rowid INT, event_rowid INT);")

@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from datetime import datetime
 from attrdict import AttrDict
 from ..common.typing import DictOfAny, List
 from ..common.logging import getLogger
@@ -7,50 +8,54 @@ from ..common.logging import getLogger
 log = getLogger(__name__)
 
 
+def store_accept(conn: sqlite3.Connection, evnt: DictOfAny):
+    """ Store an accept in the DB """
+    cur = conn.cursor()
+    assert evnt.get('name') == 'Accepted', "Invalid event given to store_pin"
+    try:
+        cur.execute("SELECT true FROM bid WHERE accepted_txhash = :txhash", {
+            'txhash': evnt['txhash']
+        })
+        if len(cur.fetchall()) == 0:
+            log.debug("!!!!!! accepted")
+            cur.execute("UPDATE bid SET accepted = :accept_stamp, accepted_txhash = :txhash, "
+                        " hoster = :hoster;", {
+                            'accept_stamp': evnt['args'].when,
+                            'txhash': evnt['txhash'],
+                            'hoster': evnt['args'].hoster,
+                        })
+            assert cur.rowcount > 0, "UPDATE failed"
+            conn.commit()
+        else:
+            log.warning("Accept already exists")
+    except Exception as err:
+        raise err
+
+
 def store_pin(conn: sqlite3.Connection, evnt: DictOfAny):
     """ Store a pin in the DB """
     cur = conn.cursor()
     assert evnt.get('name') == 'Pinned', "Invalid event given to store_pin"
-    log.debug("STORING EVENT: {}".format(evnt))
-    cur.execute("INSERT INTO pin (bid_rowid, hoster, file_hash) "
-                "VALUES (:bid_id, :hoster, :file_hash);",
-                {
-                    'bid_id': evnt['args'].bidId,
-                    'hoster': evnt['args'].hoster,
-                    'file_hash': evnt['args'].fileHash,
-                })
-    conn.commit()
-    assert cur.rowcount > 0, "INSERT failed"
+    try:
+        cur.execute("SELECT true FROM bid WHERE pinned_txhash = :txhash", {
+            'txhash': evnt['txhash']
+        })
+        if len(cur.fetchall()) == 0:
+            cur.execute("UPDATE bid SET pinned = true, pinned_txhash = :txhash, "
+                        "hoster = :hoster", {
+                            'txhash': evnt['txhash'],
+                            'hoster': evnt['args'].hoster,
+                        })
+            assert cur.rowcount > 0, "UPDATE failed"
+            conn.commit()
+    except Exception as err:
+        raise err
 
 
-def set_pin_validated(conn: sqlite3.Connection, pin_rowid: int) -> None:
+def set_pin_validated(conn: sqlite3.Connection, bid_id: int) -> None:
     """ Set a pin as validated by me """
     cur = conn.cursor()
-    cur.execute("UPDATE pins SET validated = true WHERE pin_rowid = :pin_id", {'pin_id': pin_id})
+    cur.execute("UPDATE bid SET validated = true WHERE bid_id = :bid_id", {
+        'bid_id': bid_id
+    })
     assert cur.rowcount > 0, "UPDATE failed"
-
-
-def get_available_pins(conn: sqlite3.Connection, my_address: str):
-    """ Select a Pinned event that meets criteria for validation """
-
-    pins: List[DictOfAny] = []
-
-    cur = conn.cursor()
-
-    cur.execute("SELECT rowid, hoster, file_hash, validated FROM pin "
-                "WHERE hoster != :me AND validated = false;",
-                {'me': my_address})
-    res = cur.fetchall()
-    if len(res) < 1:
-        log.debug("NO PINS FOUND")
-        return pins
-
-    for row in res:
-        pins.append(AttrDict({
-                'pin_id': row[0],
-                'hoster': row[1],
-                'file_hash': row[2],
-                'validated': row[3],
-            }))
-
-    return pins

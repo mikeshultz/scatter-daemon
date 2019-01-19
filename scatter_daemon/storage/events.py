@@ -2,7 +2,8 @@ import json
 import sqlite3
 from ..common.typing import DictOfAny, List
 from ..common.logging import getLogger
-from .pins import store_pin
+from .pins import store_accept, store_pin
+from .bids import store_bid
 
 log = getLogger(__name__)
 
@@ -29,26 +30,37 @@ def get_stored_events(conn: sqlite3.Connection) -> List[DictOfAny]:
 
 def store_events(conn: sqlite3.Connection, events: List[DictOfAny]) -> None:
     """ Store events in persistent storage """
-    log.debug("store_events()")
     if len(events) < 1:
         return
-    log.debug("store_events() - inserting event")
     cur = conn.cursor()
 
     for evnt in events:
-        log.debug("evnt: {}".format(evnt))
-        cur.execute("INSERT INTO event (tx_hash, name, block_number, args) "
-                    "VALUES (:tx_hash, :name, :block_number, :args);",
-                    {
-                        'tx_hash': evnt['txhash'],
-                        'block_number': evnt['block_number'],
-                        'name': evnt['name'],
-                        'args': json.dumps(evnt['args']),
-                    })
-        conn.commit()
+        # log.debug("evnt: {}".format(evnt))
+        try:
+            cur.execute("INSERT INTO event (tx_hash, name, block_number, args) "
+                        "VALUES (:tx_hash, :name, :block_number, :args);",
+                        {
+                            'tx_hash': evnt['txhash'],
+                            'block_number': evnt['block_number'],
+                            'name': evnt['name'],
+                            'args': json.dumps(evnt['args']),
+                        })
+        except sqlite3.IntegrityError as err:
+            if 'UNIQUE' in str(err):
+                log.debug("Event already exists.")
+                pass
+            else:
+                raise err
+        else:
+            conn.commit()
         log.debug("Inserted event {}".format(evnt.get('name')))
-        if evnt.get('name') == 'Pinned':
+        event_name = evnt.get('name')
+        if event_name == 'Pinned':
             store_pin(conn, evnt)
-        elif evnt.get('name') == 'BidSuccessful':
+        elif event_name == 'BidSuccessful':
             # store_bid(evnt)
-            pass
+            store_bid(conn, evnt)
+        elif event_name == 'Accepted':
+            store_accept(conn, evnt)
+        else:
+            log.warning("Unhandled event {}".format(event_name))

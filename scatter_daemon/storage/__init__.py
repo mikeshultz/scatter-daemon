@@ -1,10 +1,14 @@
-from .db import connect, cursor  # noqa: F401
-from .events import (  # noqa: F401
+# flake8: noqa
+from .db import connect, cursor
+from .events import (
     get_stored_events,
     store_events,
 )
-from .pins import (  # noqa: F401
+from .pins import (
     store_pin,
     set_pin_validated,
-    get_available_pins,
+)
+from .bids import (
+    get_bids_to_pin,
+    get_bids_to_validate,
 )
