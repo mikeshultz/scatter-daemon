@@ -8,6 +8,7 @@ log = getLogger(__name__)
 MODULES = [
     'init',
     'validator',
+    'accounts',
 ]
 IMPORTED_MODULES = {}
 

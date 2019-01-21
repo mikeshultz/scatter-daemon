@@ -100,3 +100,15 @@ def config_get(conf: ConfigParser, key: str, default: Optional[Any] = None,
         return val
     except NoOptionError:
         return default
+
+
+def set_ini_account(conf: ConfigParser, address: str) -> None:
+    """ Set the account in the INI and save the file """
+
+    if not LOADED_FILE:
+        raise Exception("Config never loaded.  Can't alter it.")
+
+    conf[ROOT_EL]['account'] = address
+
+    with LOADED_FILE.open('w') as _file:
+        conf.write(_file)

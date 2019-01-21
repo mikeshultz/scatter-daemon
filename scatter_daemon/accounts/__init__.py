@@ -1,5 +1,7 @@
 """ Functions for operating with secret store files """
+import json
 from pathlib import Path
+from datetime import datetime
 from getpass import getpass
 from web3 import Web3
 from eth_utils import to_normalized_address
@@ -24,6 +26,7 @@ def get_available_accounts(keystore_dir: Path, force: bool = False) -> Dict[str,
     keystore_dir = to_path(keystore_dir)
 
     accounts: Dict[str, Dict] = {}
+    jason: Dict[str, Dict] = {}
 
     for item in keystore_dir.iterdir():
 
@@ -83,3 +86,34 @@ def decrypt_account(keystore_dir: PS, address: StrOrBytes,
     eth_account = Account()
     PRIVATE_KEY = (address, eth_account.decrypt(account_json, passphrase))
     return PRIVATE_KEY[1]
+
+
+def create_account(keystore_dir: PS, passphrase: Optional[str] = None) -> str:
+    """ Create a new Ethereum account and save it to the keystore """
+
+    if not isinstance(keystore_dir, Path):
+        keystore_dir = Path(keystore_dir)
+
+    if not passphrase:
+        if not passphrase:
+            passphrase = getpass("Enter password to encrypt account:")
+
+    eth_account = Account()
+    new_account = eth_account.create()
+    PRIVATE_KEY = new_account.privateKey
+    new_account_json = eth_account.encrypt(PRIVATE_KEY, passphrase)
+
+    filename = keystore_dir.joinpath(
+                'UTC--{}--{}'.format(
+                    datetime.now().isoformat(),
+                    Web3.toChecksumAddress(new_account_json.get('address'))
+                    )
+                )
+    with filename.open('w') as json_file:
+        try:
+            json_string = json.dumps(new_account_json)
+            json_file.write(json_string)
+        except Exception as e:
+            log.error("Error writing JSON file {}: {}".format(filename, str(e)))
+
+    return new_account.address
