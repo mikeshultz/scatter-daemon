@@ -65,6 +65,14 @@ def init_scatter_contract(web3: Web3, router: Contract) -> Contract:
     return web3.eth.contract(address=address, abi=abi)
 
 
+def init_register_contract(web3: Web3, router: Contract) -> Contract:
+    """ Initialize a Scatter Web3 Contract """
+    address = router.functions.get(Web3.sha3(text='Register')).call()
+    address = to_account(address)
+    abi = load_abi('IRegister.abi')
+    return web3.eth.contract(address=address, abi=abi)
+
+
 def gen_signature(abi_entry: dict) -> str:
     """ Generate a signature for an ABI entry """
     if not abi_entry.get('name') or not abi_entry.get('type') or not abi_entry.get('inputs') \
