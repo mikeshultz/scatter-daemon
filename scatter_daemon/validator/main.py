@@ -1,19 +1,23 @@
 """ The Validator """
 import time
 import sqlite3
+import ipfsapi
 from typing import List
 from configparser import ConfigParser
+from eth_utils import is_address
 from web3 import Web3
 from web3.eth import Contract
 from attrdict import AttrDict
 from ..storage import connect, store_events, get_bids_to_validate
+from ..scatter.register import get_registration
 from ..common.const import STD_PROCESS_DELAY, SETTLED_PROCESS_DELAY, DEFAULT_DB_FILE
 from ..common.config import VALIDATOR_EL, config_get
 from ..common.contracts import (
     init_router_contract,
     init_scatter_contract,
     events_from_abi,
-    event_from_log
+    event_from_log,
+    init_register_contract,
 )
 from ..common.web3 import init_web3, eth_getLogs
 from ..common.exceptions import ValidatorError
@@ -61,12 +65,33 @@ def fetch_events(conn: sqlite3.Connection, web3: Web3, scatter: Contract):
             store_events(conn, events)
 
 
-def validate_bid(scatter: Contract, bid_id: int):
+def validate_bid(ipfs: ipfsapi.client.Client, scatter: Contract, register: Contract, bid_id: int):
     """ Perform validation """
     print('#######################################################################################')
     print('#######################################################################################')
     print('#######################################################################################')
-    pass
+    hoster = scatter.functions.getHoster(bid_id).call()
+    assert is_address(hoster), "Invalid address received from Scatter"
+    hoster_reg = get_registration(ipfs, register, hoster)
+    if hoster_reg is None:
+        log.warning("Unable to retrieve hoster's Registration from IPFS. Can not validate bid "
+                    "#{}. Will try again later.".format(bid_id))
+        return
+
+    # If any check fails, this will turn False
+    valid = True
+
+    # Get our node to connect to the hoster's
+    conn_status = ipfs.swarm_connect(hoster_reg)
+    assert 'Strings' in conn_status, (
+        "Unexpected response from ipfs swarm connect: {}".format(conn_status)
+    )
+    if (len(conn_status['Strings']) == 0
+            or not any('success' in ln for ln in conn_status['Strings'])):
+        log.warning("Unable to make connection to hoster's IPFS node.")
+
+    # TODO
+    assert False, "break. Not yet implemented"
 
 
 def validate_run(conf: ConfigParser) -> None:
@@ -84,15 +109,20 @@ def validate_run(conf: ConfigParser) -> None:
 
     router = init_router_contract(web3, router_address)
     scatter = init_scatter_contract(web3, router)
+    register = init_register_contract(web3, router)
     db_conn = connect(config_get(conf, 'db_file', DEFAULT_DB_FILE))
+    ipfs_conn = ipfsapi.connect('127.0.0.1', 5001)  # TODO: Move to conf!
 
     while True:
         log.info("Fetching events...")
         fetch_events(db_conn, web3, scatter)
 
         log.info("Selecting pin to validate...")
+
         pins = get_bids_to_validate(db_conn, my_account)
+
         log.debug("Found {} available pins".format(len(pins)))
+
         bid_id = select_random_pin_for_validation(scatter, pins, {
             'max_file_size': config_get(conf, 'max_file_size', section=VALIDATOR_EL),
         })
@@ -100,7 +130,7 @@ def validate_run(conf: ConfigParser) -> None:
         if bid_id > -1:
             log.error("VALIDATE_BID")
             log.info('Validating bid #{}'.format(bid_id))
-            validate_bid(scatter, bid_id)
+            validate_bid(ipfs_conn, scatter, register, bid_id)
 
             # Let's not go crazy here
             time.sleep(STD_PROCESS_DELAY)
